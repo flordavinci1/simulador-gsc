@@ -22,7 +22,7 @@ def get_all_data(scenario):
     
     q_list = queries_map.get(scenario, ["query dummy"])
     perf_list = []
-    idx_list = []
+    idx_list = [] # Esta es la variable correcta
     
     for date in dates:
         # Lógica Rendimiento
@@ -44,8 +44,9 @@ def get_all_data(scenario):
             v, e = (1200 if scenario == "Blog (Bajo CTR)" else 500), np.random.randint(0, 5)
         idx_list.append([date, v, e])
             
-    return pd.DataFrame(perf_list, columns=['Fecha','Query','Clicks','Impresiones','Posicion']), \
-           pd.DataFrame(idx_records, columns=['Fecha','Validas','Errores'])
+    # CORRECCIÓN AQUÍ: Cambiado idx_records por idx_list
+    return pd.DataFrame(perf_records, columns=['Fecha','Query','Clicks','Impresiones','Posicion']) if 'perf_records' in locals() else pd.DataFrame(perf_list, columns=['Fecha','Query','Clicks','Impresiones','Posicion']), \
+           pd.DataFrame(idx_list, columns=['Fecha','Validas','Errores'])
 
 # --- NAVEGACIÓN (SIDEBAR) ---
 with st.sidebar:
@@ -64,12 +65,15 @@ if menu == "📈 Rendimiento":
     
     # 1. KPIs Superiores
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Clics totales", f"{df_p['Clicks'].sum():,}")
-    c2.metric("Impresiones totales", f"{df_p['Impresiones'].sum():,}")
-    c3.metric("CTR medio", f"{(df_p['Clicks'].sum()/df_p['Impresiones'].sum())*100:.2f}%")
+    total_c = df_p['Clicks'].sum()
+    total_i = df_p['Impresiones'].sum()
+    
+    c1.metric("Clics totales", f"{total_c:,}")
+    c2.metric("Impresiones totales", f"{total_i:,}")
+    c3.metric("CTR medio", f"{(total_c/total_i)*100:.2f}%")
     c4.metric("Posición media", f"{df_p['Posicion'].mean():.1f}")
 
-    # 2. Gráfico (Eilo GSC con doble eje)
+    # 2. Gráfico (Estilo GSC con doble eje)
     trend = df_p.groupby('Fecha').agg({'Clicks':'sum', 'Impresiones':'sum'}).reset_index()
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=trend['Fecha'], y=trend['Clicks'], name="Clics", line=dict(color='#4285F4', width=3)))
@@ -92,58 +96,61 @@ if menu == "📈 Rendimiento":
         q_table = df_p.groupby('Query').agg({'Clicks':'sum', 'Impresiones':'sum', 'CTR':'mean', 'Posicion':'mean'}).sort_values('Clicks', ascending=False)
         st.dataframe(q_table.style.format(precision=2), use_container_width=True)
     with t2:
-        st.info("Simulación de páginas internas del sitio.")
-        st.dataframe(df_p.groupby('Query').sum()[['Clicks', 'Impresiones']].head()) # Placeholder
+        st.info("Páginas internas con mayor tráfico.")
+        pages_df = df_p.copy()
+        pages_df['Página'] = "/" + pages_df['Query'].str.replace(" ", "-")
+        st.dataframe(pages_df.groupby('Página').sum()[['Clicks', 'Impresiones']].sort_values('Clicks', ascending=False))
     with t3:
-        st.bar_chart(df_p.groupby('Query').sum()['Clicks']) # Placeholder para países
+        paises = pd.DataFrame({'País': ['España', 'México', 'Argentina', 'Colombia', 'Chile'], 'Clicks': [total_c*0.4, total_c*0.3, total_c*0.15, total_c*0.1, total_c*0.05]})
+        st.bar_chart(paises.set_index('País'))
 
 # --- VISTA: INDEXACIÓN ---
 elif menu == "🔍 Indexación":
     st.header("Cobertura de Indexación")
     
     ci1, ci2 = st.columns(2)
-    ci1.metric("Páginas Válidas", df_i.iloc[-1]['Validas'])
-    ci2.metric("Páginas con Error", df_i.iloc[-1]['Errores'], delta_color="inverse")
+    ci1.metric("Páginas Válidas", f"{int(df_i.iloc[-1]['Validas']):,}")
+    ci2.metric("Páginas con Error", f"{int(df_i.iloc[-1]['Errores']):,}", delta_color="inverse")
 
-    
+    # Gráfico de área para indexación
     fig_i = px.area(df_i, x='Fecha', y=['Validas', 'Errores'], 
                     color_discrete_map={'Validas': '#34A853', 'Errores': '#EA4335'},
                     line_shape='hv', template="none")
     st.plotly_chart(fig_i, use_container_width=True)
 
-# --- VISTA: ESTRATEGIA (RESUMEN PARA PROFES) ---
+# --- VISTA: ESTRATEGIA ---
 elif menu == "👨‍🏫 Guía Estratégica":
-    st.header("Resumen Diagnóstico para el Docente")
+    st.header("Análisis del Consultor SEO")
     
-    st.subheader(f"Análisis del caso: {sc_choice}")
     if "Ecommerce" in sc_choice:
-        st.error("📉 **PROBLEMA:** Desplome técnico.")
+        st.error("📉 **DIAGNÓSTICO: Caída Técnica Crítica**")
         st.markdown("""
-        - **Observación:** Las impresiones caen ligeramente pero los clics desaparecen.
-        - **Causa en Indexación:** Las páginas válidas bajaron de 500 a casi 0.
-        - **Acción:** Revisar redirecciones 301 o errores 5xx en el servidor.
+        - **Lo que vemos:** Una caída total de Clics a partir del cuarto mes.
+        - **La causa:** Si miras la pestaña de **Indexación**, verás que las páginas válidas desaparecen. Esto no es un problema de contenido, es un problema de visibilidad técnica (posible error 500, robots.txt bloqueado o desindexación masiva).
+        - **Tarea para el alumno:** ¿Qué harías primero? ¿Revisar el Search Console real o llamar al desarrollador?
         """)
     elif "Blog" in sc_choice:
-        st.warning("🎯 **PROBLEMA:** Bajo CTR.")
+        st.warning("🎯 **DIAGNÓSTICO: Problema de Atractivo (CTR)**")
         st.markdown("""
-        - **Observación:** El sitio está en el Top 3 (Posición < 3) pero el CTR es menor al 1%.
-        - **Acción:** Optimizar el Title y la Meta Description para generar curiosidad.
+        - **Lo que vemos:** Posiciones excelentes (1.5 - 2.0) e Impresiones altas, pero poquísimos Clics.
+        - **La causa:** El sitio es visible pero nadie quiere entrar. El "Snippet" es aburrido o no resuelve la duda.
+        - **Tarea para el alumno:** Redactar un nuevo Meta Title y Description para la query principal.
         """)
     else:
-        st.success("💎 **PROBLEMA:** Falta de Escalabilidad.")
+        st.success("💎 **DIAGNÓSTICO: Potencial de Escalado**")
         st.markdown("""
-        - **Observación:** Rendimiento perfecto pero bajo volumen.
-        - **Acción:** Identificar temas 'Seed' con más volumen de búsqueda.
+        - **Lo que vemos:** Datos perfectos, CTR alto, pero volumen pequeño.
+        - **La causa:** Estamos dominando un nicho muy pequeño.
+        - **Tarea para el alumno:** Buscar 5 palabras clave de mayor volumen relacionadas para expandir el sitio.
         """)
 
 # --- VISTA: CARGAR DATOS ---
 else:
-    st.header("Subir Datos Dummy")
-    st.write("Sube un CSV con: `Fecha, Query, Clicks, Impresiones, Posicion` para visualizarlo.")
-    up = st.file_uploader("Cargar archivo")
+    st.header("Laboratorio de Datos Personalizado")
+    st.write("Sube tu propio archivo CSV para analizarlo con esta interfaz.")
+    up = st.file_uploader("Formato: Fecha, Query, Clicks, Impresiones, Posicion")
     if up:
-        st.success("Datos cargados. Revisa la pestaña de Rendimiento.")
+        st.success("Datos cargados. Ve a Rendimiento para ver los gráficos.")
 
-# --- BOTÓN DESCARGA ---
 st.sidebar.divider()
-st.sidebar.download_button("📥 Bajar CSV actual", df_p.to_csv(index=False), "gsc_lab_data.csv")
+st.sidebar.download_button("📥 Descargar Datos del Caso", df_p.to_csv(index=False), "gsc_lab_data.csv")
