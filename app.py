@@ -2,57 +2,62 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN DE LA PÁGINA ---
 st.set_page_config(page_title="GSC Educational Simulator", layout="wide", page_icon="📈")
 
-# Estilo CSS para mejorar la estética
+# Estilo CSS para mejorar la estética de las métricas
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; border: 1px solid #e0e0e0; padding: 15px; border-radius: 10px; }
-    </style>
-    """, unsafe_allow_index=True)
-
-# --- GENERADOR DE DATOS AVANZADO ---
-def generate_data(scenario):
-    dates = pd.date_range(end=pd.Timestamp.now(), periods=180)
-    queries = {
-        "Sitio 1: Ecommerce en Caída": ["comprar zapatos", "zapatillas running", "botas cuero"],
-        "Sitio 2: Blog con Bajo CTR": ["recetas faciles", "como cocinar pasta", "cenas rapidas"],
-        "Sitio 3: Nicho Oportunidad": ["mejor teclado mecanico 2024", "teclado gaming barato"]
+    div[data-testid="metric-container"] {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- GENERADOR DE DATOS INTERNO ---
+def generate_data(scenario):
+    end_date = datetime.now()
+    dates = pd.date_range(end=end_date, periods=90) # 3 meses de datos para que sea legible
+    
+    queries_dict = {
+        "Sitio 1: Ecommerce en Caída": ["comprar zapatos", "zapatillas running", "ofertas moda"],
+        "Sitio 2: Blog con Bajo CTR": ["como hacer cafe", "receta pan casero", "trucos cocina"],
+        "Sitio 3: Nicho Oportunidad": ["mejor teclado ergonomico 2026", "teclado mecanico barato"]
+    }
+    
     countries = ["España", "México", "Argentina", "Colombia", "Chile"]
     devices = ["Mobile", "Desktop", "Tablet"]
+    current_queries = queries_dict.get(scenario)
     
-    current_queries = queries.get(scenario, ["query dummy"])
     data = []
-
     for date in dates:
-        # Lógica de impacto según escenario
-        is_second_half = date > dates[90]
+        # Lógica de impacto: caída a mitad del periodo para el escenario 1
+        is_drop_period = (scenario == "Sitio 1: Ecommerce en Caída" and date > dates[45])
         
         for q in current_queries:
             for country in countries:
                 for device in devices:
                     if scenario == "Sitio 1: Ecommerce en Caída":
-                        # Caída fuerte de clicks a mitad del tiempo
-                        base_imp = 200
-                        base_clicks = 40 if not is_second_half else 2
-                        pos = 3.2 if not is_second_half else 18.5
-                    elif scenario == "Sitio 2: Blog con Bajo CTR":
-                        # Mucha impresión, casi nada de clicks
-                        base_imp = 1000
-                        base_clicks = 1
-                        pos = 2.1
-                    else: # Nicho
-                        base_imp = 20
-                        base_clicks = 8
-                        pos = 1.1
+                        imp = np.random.randint(100, 150)
+                        clicks = np.random.randint(10, 20) if not is_drop_period else np.random.randint(0, 3)
+                        pos = np.random.uniform(2, 4) if not is_drop_period else np.random.uniform(15, 25)
                     
-                    # Añadir ruido aleatorio
-                    imp = max(1, base_imp + np.random.randint(-10, 10))
-                    clicks = max(0, base_clicks + np.random.randint(-2, 3))
+                    elif scenario == "Sitio 2: Blog con Bajo CTR":
+                        imp = np.random.randint(1000, 2000) # Muchas impresiones
+                        clicks = np.random.randint(0, 5)    # Pero poquísimos clicks
+                        pos = np.random.uniform(1.5, 3.0)
+                    
+                    else: # Nicho Oportunidad
+                        imp = np.random.randint(10, 30)    # Poco volumen
+                        clicks = np.random.randint(5, 12)   # Pero CTR muy alto
+                        pos = np.random.uniform(1.0, 2.0)
                     
                     data.append([date, q, country, device, clicks, imp, pos])
             
@@ -60,88 +65,96 @@ def generate_data(scenario):
     df['CTR'] = (df['Clicks'] / df['Impresiones']) * 100
     return df
 
-# --- SIDEBAR: CONTROL DE DATOS ---
-st.sidebar.title("🎛️ Panel de Control")
+# --- INTERFAZ DE USUARIO (SIDEBAR) ---
+st.sidebar.title("🚀 GSC Sim v1.0")
 source = st.sidebar.radio("Fuente de datos:", ["Escenarios Educativos", "Subir CSV Propio"])
 
 if source == "Escenarios Educativos":
-    escenario_nombre = st.sidebar.selectbox("Selecciona un caso de estudio:", 
+    escenario_nombre = st.sidebar.selectbox("Selecciona un caso:", 
                                             ["Sitio 1: Ecommerce en Caída", 
                                              "Sitio 2: Blog con Bajo CTR", 
                                              "Sitio 3: Nicho Oportunidad"])
     df = generate_data(escenario_nombre)
-    st.sidebar.success(f"Analizando: {escenario_nombre}")
+    st.sidebar.info(f"Escenario activo: {escenario_nombre}")
 else:
-    uploaded_file = st.sidebar.file_uploader("Sube tu CSV (Columnas: Fecha, Query, Pais, Dispositivo, Clicks, Impresiones, Posicion)")
+    uploaded_file = st.sidebar.file_uploader("Sube tu CSV")
     if uploaded_file:
         df = pd.read_csv(uploaded_file, parse_dates=['Fecha'])
     else:
-        st.info("Esperando archivo... Mientras tanto, puedes explorar los escenarios.")
+        st.warning("Usando datos por defecto hasta que subas un archivo.")
         df = generate_data("Sitio 1: Ecommerce en Caída")
 
-# --- FILTROS GLOBALES ---
+# Filtros rápidos
 st.sidebar.divider()
-st.sidebar.subheader("Filtros de Vista")
-selected_device = st.sidebar.multiselect("Dispositivo", df['Dispositivo'].unique(), default=df['Dispositivo'].unique())
-df_filtered = df[df['Dispositivo'].isin(selected_device)]
+f_device = st.sidebar.multiselect("Filtrar Dispositivo", df['Dispositivo'].unique(), default=df['Dispositivo'].unique())
+df_filtered = df[df['Dispositivo'].isin(f_device)]
 
-# --- MAIN DASHBOARD ---
-st.title("📊 GSC Simulator MVP")
+# --- DASHBOARD PRINCIPAL ---
+st.title("🎓 Simulador de Search Console")
+st.markdown("Herramienta educativa para diagnóstico de anomalías SEO.")
 
-# KPIs
+# KPIs Superiores
 c1, c2, c3, c4 = st.columns(4)
-total_c = df_filtered['Clicks'].sum()
-total_i = df_filtered['Impresiones'].sum()
-avg_ctr = (total_c / total_i) * 100
+total_clicks = df_filtered['Clicks'].sum()
+total_imp = df_filtered['Impresiones'].sum()
+avg_ctr = (total_clicks / total_imp) * 100
 avg_pos = df_filtered['Posicion'].mean()
 
-c1.metric("Total Clicks", f"{total_c:,}")
-c2.metric("Total Impresiones", f"{total_i:,}")
+c1.metric("Clicks", f"{total_clicks:,}")
+c2.metric("Impresiones", f"{total_imp:,}")
 c3.metric("CTR Medio", f"{avg_ctr:.2f}%")
 c4.metric("Posición Media", f"{avg_pos:.1f}")
 
-# Gráfico de Tendencia
+# Gráfico de Líneas (Rendimiento)
 st.subheader("Rendimiento en el tiempo")
-trend = df_filtered.groupby('Fecha').agg({'Clicks':'sum', 'Impresiones':'sum'}).reset_index()
-fig = px.line(trend, x='Fecha', y=['Clicks', 'Impresiones'], color_discrete_sequence=['#4285F4', '#EA4335'])
-st.plotly_chart(fig, use_container_width=True)
+trend_data = df_filtered.groupby('Fecha').agg({'Clicks':'sum', 'Impresiones':'sum'}).reset_index()
+fig_line = px.line(trend_data, x='Fecha', y=['Clicks', 'Impresiones'], 
+                  color_discrete_map={'Clicks': '#4285F4', 'Impresiones': '#EA4335'},
+                  template="plotly_white")
+st.plotly_chart(fig_line, use_container_width=True)
 
-# --- CAPA EDUCATIVA: INSIGHTS AUTOMÁTICOS ---
+# --- PANEL DE INSIGHTS EDUCATIVOS ---
 st.divider()
-st.subheader("💡 Auditoría SEO Automática")
+st.subheader("💡 Análisis del Consultor AI")
+col_a, col_b = st.columns(2)
 
-col_ins_1, col_ins_2 = st.columns(2)
-
-with col_ins_1:
-    # Análisis de Caída
-    recent = trend.tail(14)['Clicks'].sum()
-    previous = trend.iloc[-28:-14]['Clicks'].sum()
-    if recent < previous * 0.7:
-        st.error(f"⚠️ **ALERTA DE CAÍDA:** El tráfico cayó un {((1 - recent/previous)*100):.1f}% en los últimos 14 días.")
-        st.write("Explicación: Esto suele deberse a problemas técnicos (indexación) o penalizaciones.")
+with col_a:
+    # Diagnóstico de Tráfico
+    recent_7d = trend_data.tail(7)['Clicks'].sum()
+    prev_7d = trend_data.iloc[-14:-7]['Clicks'].sum()
+    
+    if recent_7d < prev_7d * 0.5:
+        st.error("🆘 **ALERTA CRÍTICA:** Caída masiva de tráfico detectada. Revisa posibles errores de rastreo o pérdida de posiciones clave.")
+    elif avg_ctr < 1.0:
+        st.warning("⚠️ **AVISO DE CTR:** Tus impresiones son altas pero los clicks bajos. Considera optimizar los metatítulos.")
     else:
-        st.success("✅ Estabilidad de tráfico detectada.")
+        st.success("✅ El patrón de tráfico parece saludable para este nicho.")
 
-with col_ins_2:
-    # Análisis de CTR
-    queries_bad_ctr = df_filtered.groupby('Query').agg({'CTR':'mean', 'Impresiones':'sum'}).query('CTR < 1 and Impresiones > 500')
-    if not queries_bad_ctr.empty:
-        st.warning(f"⚠️ **BAJO CTR:** Tienes {len(queries_bad_ctr)} queries con muchas impresiones pero pocos clicks.")
-        st.write("Explicación: Revisa tus títulos (Titles). No están siendo atractivos para el usuario.")
+with col_b:
+    # Diagnóstico de Dispositivos
+    mobile_share = (df_filtered[df_filtered['Dispositivo'] == 'Mobile']['Clicks'].sum() / total_clicks) * 100
+    st.info(f"📊 **Dato Clave:** El {mobile_share:.1f}% de tu tráfico es móvil. Asegúrate de que la velocidad de carga en celulares sea óptima.")
 
-# --- TABS DE DATOS ---
+# --- TABLAS DETALLADAS ---
 st.divider()
-tab1, tab2, tab3 = st.tabs(["🔍 Consultas (Queries)", "🌍 Países", "📱 Dispositivos"])
+t_queries, t_countries, t_devices = st.tabs(["🔍 Queries", "🌍 Países", "📱 Dispositivos"])
 
-with tab1:
-    q_df = df_filtered.groupby('Query').agg({'Clicks':'sum', 'Impresiones':'sum', 'CTR':'mean', 'Posicion':'mean'}).sort_values('Clicks', ascending=False)
-    st.dataframe(q_df.style.format(precision=2), use_container_width=True)
+with t_queries:
+    q_table = df_filtered.groupby('Query').agg({
+        'Clicks': 'sum', 
+        'Impresiones': 'sum', 
+        'CTR': 'mean', 
+        'Posicion': 'mean'
+    }).sort_values('Clicks', ascending=False)
+    st.dataframe(q_table.style.format(precision=2), use_container_width=True)
 
-with tab2:
-    p_df = df_filtered.groupby('Pais').agg({'Clicks':'sum', 'Impresiones':'sum', 'CTR':'mean'}).sort_values('Clicks', ascending=False)
-    fig_pais = px.bar(p_df.reset_index(), x='Pais', y='Clicks', color='Pais')
-    st.plotly_chart(fig_pais)
+with t_countries:
+    p_table = df_filtered.groupby('Pais').agg({'Clicks': 'sum', 'Impresiones': 'sum', 'CTR': 'mean'}).sort_values('Clicks', ascending=False)
+    fig_bar = px.bar(p_table.reset_index(), x='Pais', y='Clicks', title="Clicks por País", color_discrete_sequence=['#34A853'])
+    st.plotly_chart(fig_bar)
 
-with tab3:
-    d_df = df_filtered.groupby('Dispositivo').agg({'Clicks':'sum', 'Impresiones':'sum', 'CTR':'mean'})
-    st.table(d_df)
+with t_devices:
+    d_table = df_filtered.groupby('Dispositivo').agg({'Clicks': 'sum', 'Impresiones': 'sum', 'CTR': 'mean'})
+    st.table(d_table)
+
+st.sidebar.caption("Desarrollado para fines educativos - MVP GSC")
