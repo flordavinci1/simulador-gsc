@@ -71,4 +71,56 @@ time_range = st.sidebar.selectbox("Periodo de análisis:", ["Últimos 28 días",
 days_map = {"Últimos 28 días": 28, "Últimos 3 meses": 90, "Últimos 6 meses": 180}
 cutoff = datetime.now() - timedelta(days=days_map[time_range])
 df_p_raw, df_i_raw = get_data(sc_name)
-df_p = df_p_raw[df
+df_p = df_p_raw[df_p_raw['Fecha'] >= cutoff]
+df_i = df_i_raw[df_i_raw['Fecha'] >= cutoff]
+
+# --- 4. TABS (ORDEN CORRECTO) ---
+tab_perf, tab_idx, tab_teacher = st.tabs(["📊 Rendimiento", "🔍 Indexación", "🌳 Árbol de Decisión"])
+
+with tab_perf:
+    st.subheader(f"Dashboard de Rendimiento ({time_range})")
+    c1, c2, c3, c4 = st.columns(4)
+    tc, ti = df_p['Clicks'].sum(), df_p['Impresiones'].sum()
+    c1.metric("Clics", f"{tc:,}")
+    c2.metric("Impresiones", f"{ti:,}")
+    c3.metric("CTR Medio", f"{(tc/ti)*100:.2f}%")
+    c4.metric("Posición Media", f"{df_p['Posicion'].mean():.1f}")
+    
+    st.plotly_chart(px.line(df_p.groupby('Fecha').sum().reset_index(), x='Fecha', y=['Clicks', 'Impresiones'], 
+                           color_discrete_map={'Clicks': '#4285F4', 'Impresiones': '#7E3FF2'},
+                           template="none"), use_container_width=True)
+    
+    st.divider()
+    st.subheader("Tabla de Consultas")
+    st.dataframe(df_p.groupby('Query').agg({'Clicks':'sum','Impresiones':'sum','Posicion':'mean'}).sort_values('Clicks', ascending=False).style.format(precision=2), use_container_width=True)
+
+with tab_idx:
+    st.subheader("Estado de Cobertura técnica")
+    st.plotly_chart(px.area(df_i, x='Fecha', y=['Validas', 'Errores'], color_discrete_map={'Validas':'#34A853', 'Errores':'#D93025'}, line_shape='hv', template="none"), use_container_width=True)
+
+with tab_teacher:
+    st.header("Guía del Taller: Árbol de Decisión SEO")
+    st.write("Usa este esquema para que los alumnos diagnostiquen la caída:")
+    
+    # Representación visual del flujo de pensamiento
+    
+
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.info("### Paso 1: Filtro Externo\n¿Es estacional o coyuntural? (Comparar con histórico o Trends)")
+        st.warning("### Paso 2: Gravedad\n¿Es una caída GLOBAL o PUNTUAL?")
+    
+    with col_t2:
+        st.success("### Paso 3: Origen\n- Global: Indexación (Robots, 404 masivos).\n- Puntual: Canibalización, 404 de URL o cambio de contenido.")
+
+    st.divider()
+    st.subheader("💡 Solución del Escenario Seleccionado")
+    if "Global" in sc_name:
+        st.error("**DIAGNÓSTICO:** Caída Técnica Global. Clics e impresiones caen a la vez porque las páginas válidas en Cobertura desaparecieron.")
+    elif "Bajo CTR" in sc_name:
+        st.warning("**DIAGNÓSTICO:** Problema de Contenido/CTR. Las impresiones se mantienen pero los clics son bajos. El 'Snippet' no atrae.")
+    else:
+        st.success("**DIAGNÓSTICO:** Caída Puntual. Una sola URL cayó (Canibalización). Google prefiere otra página para esa consulta.")
+
+st.sidebar.divider()
+st.sidebar.download_button("📥 Exportar CSV para clase", df_p.to_csv(index=False), "datos_taller_seo.csv")
